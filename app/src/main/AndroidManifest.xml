@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.yuukari.biptask">
+
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="true" />
+
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true">
+
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-1921289771240370~8353665064"/>
+
+        <service
+            android:name="com.yuukari.biptask.AmazfitService"
+            android:enabled="true"
+            android:exported="true" />
+
+        <activity android:name="com.yuukari.biptask.activity.LoggerActivity"></activity>
+
+        <activity android:name="com.yuukari.biptask.activity.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.yuukari.biptask.tasker.activity.TaskerEventActivity"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Amazfit data received">
+            <intent-filter>
+                <action android:name="net.dinglisch.android.tasker.ACTION_EDIT_EVENT" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name="com.yuukari.biptask.tasker.receivers.QueryReceiver"
+            android:exported="true"
+            android:process=":background">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.QUERY_CONDITION" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.yuukari.biptask.receivers.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="AMAZFIT_SERVICE_STOPPED" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>
