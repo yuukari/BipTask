@@ -12,5 +12,7 @@ public final class Intents {
     public static final String EXTRA_ACTIVITY = "com.twofortyfouram.locale.intent.extra.ACTIVITY";
     public static final String EXTRA_BUNDLE = "com.twofortyfouram.locale.intent.extra.BUNDLE";
 
+    public static final String EXTRA_MESSAGE_TYPE = "com.example.akirahome.intent.extra.MESSAGE_TYPE";
     public static final String EXTRA_MESSAGE_DATA = "com.example.akirahome.intent.extra.MESSAGE_DATA";
+    public static final String EXTRA_MESSAGE_APP_ID = "com.example.akirahome.intent.extra.MESSAGE_APP_ID";
 }

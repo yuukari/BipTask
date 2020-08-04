@@ -21,10 +21,6 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
 
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-1921289771240370~8353665064"/>
-
         <service
             android:name="com.yuukari.biptask.AmazfitService"
             android:enabled="true"

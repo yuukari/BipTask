@@ -27,6 +27,8 @@ import com.yuukari.biptask.activity.MainActivity;
 import com.yuukari.biptask.tasker.Intents;
 import com.yuukari.biptask.tasker.activity.TaskerEventActivity;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import tasker.TaskerPlugin;
@@ -36,12 +38,28 @@ public class AmazfitService extends Service {
     public static final String DEVICE_CONNECTED = "com.example.akirahome.DEVICE_CONNECTED";
     public static final String DEVICE_DISCONNECTED = "com.example.akirahome.DEVICE_DISCONNECTED";
 
+    public static final String BIPTASK_MESSAGE_BASIC = "BIPTASK_MESSAGE_BASIC";
+    public static final String BIPTASK_MESSAGE_BUTTON = "BIPTASK_MESSAGE_BUTTON";
+    public static final String BIPTASK_MESSAGE_BYTE = "BIPTASK_MESSAGE_BYTE";
+    public static final String BIPTASK_MESSAGE_BYTES = "BIPTASK_MESSAGE_BYTES";
+    public static final String BIPTASK_MESSAGE_TEXT = "BIPTASK_MESSAGE_TEXT";
+
     private Handler connectionWaitHandler = new Handler();
 
     private BluetoothAdapter bluetoothAdapter;
     private String deviceAddress;
 
     private SharedPreferences preferences;
+
+    private String messageType = null;
+    private boolean isMessageReceiving = false;
+    private boolean firstByteReceiving = false;
+    private int byteBuffer;
+    private ArrayList<Integer> bytesReceived = new ArrayList<Integer>();
+    private ArrayList<Integer> appId = new ArrayList<Integer>();
+
+    private Handler buttonHandler = new Handler();
+    private Integer buttonPressCount = 0;
 
     @Override
     public void onCreate() {
@@ -100,6 +118,8 @@ public class AmazfitService extends Service {
                 case BluetoothGatt.STATE_DISCONNECTED:
                     Log.i("BLE", "Device disconnected, starting background handler for awaiting connection");
                     sendBroadcast(new Intent(DEVICE_DISCONNECTED));
+                    gatt.disconnect();
+                    gatt.close();
 
                     connectionWaitHandler.postDelayed(new Runnable() {
                         @Override
@@ -133,23 +153,110 @@ public class AmazfitService extends Service {
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic){
-            String value = String.valueOf(characteristic.getValue()[0]);
+            Integer value = Integer.valueOf(characteristic.getValue()[0]);
+            if (value < 0)
+                value += 256;
 
-            Log.i("BLE CH", "Characteristic " + characteristic.getUuid() + " changed value to " + value);
+            if (isMessageReceiving == true){
+                if (messageType == null){
+                    messageType = (value == 0xE0) ? BIPTASK_MESSAGE_BYTES : BIPTASK_MESSAGE_TEXT;
+                    Log.i("BLE MSG", "Message has type " + messageType + ", receiving bytes");
+                } else {
+                    if (value == 0xDF){
+                        Log.i("BLE MSG", "Received BipTask protocol stop byte");
 
-            Intent intent = new Intent(DEVICE_EVENT_HANDLE);
-            intent.putExtra("value", value);
-            sendBroadcast(intent);
+                        Bundle taskerBundle = new Bundle();
 
-            Bundle taskerBundle = new Bundle();
-            taskerBundle.putString(Intents.EXTRA_MESSAGE_DATA, value);
+                        if (bytesReceived.size() == 1){
+                            Log.i("BLE MSG", "Received single byte, changed message type to BIPTASK_MESSAGE_BYTE");
 
-            Intent taskerIntent = new Intent(Intents.ACTION_REQUEST_QUERY).putExtra(Intents.EXTRA_ACTIVITY, TaskerEventActivity.class.getName());
+                            Intent intent = new Intent(DEVICE_EVENT_HANDLE);
+                            intent.putExtra("type", BIPTASK_MESSAGE_BYTE);
+                            intent.putExtra("value", bytesReceived.get(0).toString());
+                            intent.putExtra("applicationId", String.valueOf(appId.get(0) * appId.get(1) * appId.get(2)));
+                            sendBroadcast(intent);
 
-            int taskerMessageID = TaskerPlugin.Event.addPassThroughMessageID(taskerIntent);
-            TaskerPlugin.Event.addPassThroughData(taskerIntent, taskerBundle);
+                            taskerBundle.putString(Intents.EXTRA_MESSAGE_TYPE, BIPTASK_MESSAGE_BYTE);
+                            taskerBundle.putString(Intents.EXTRA_MESSAGE_DATA, bytesReceived.get(0).toString());
+                            taskerBundle.putString(Intents.EXTRA_MESSAGE_APP_ID, String.valueOf(appId.get(0) * appId.get(1) * appId.get(2)));
+                        } else {
+                            ArrayList<String> bytesReceivedString = new ArrayList<String>();
+                            for (int i = 0; i < bytesReceived.size(); i++)
+                                bytesReceivedString.add(String.valueOf(bytesReceived.get(i)));
 
-            sendBroadcast(taskerIntent);
+                            Intent intent = new Intent(DEVICE_EVENT_HANDLE);
+                            intent.putExtra("type", messageType);
+                            intent.putExtra("value", bytesReceivedString);
+                            intent.putExtra("applicationId", String.valueOf(appId.get(0) * appId.get(1) * appId.get(2)));
+                            sendBroadcast(intent);
+
+                            taskerBundle.putString(Intents.EXTRA_MESSAGE_TYPE, messageType);
+                            taskerBundle.putStringArrayList(Intents.EXTRA_MESSAGE_DATA, bytesReceivedString);
+                            taskerBundle.putString(Intents.EXTRA_MESSAGE_APP_ID, String.valueOf(appId.get(0) * appId.get(1) * appId.get(2)));
+                        }
+
+                        Intent taskerIntent = new Intent(Intents.ACTION_REQUEST_QUERY).putExtra(Intents.EXTRA_ACTIVITY, TaskerEventActivity.class.getName());
+                        int taskerMessageID = TaskerPlugin.Event.addPassThroughMessageID(taskerIntent);
+                        TaskerPlugin.Event.addPassThroughData(taskerIntent, taskerBundle);
+                        sendBroadcast(taskerIntent);
+
+                        isMessageReceiving = false;
+                        return;
+                    }
+
+                    if (firstByteReceiving){
+                        byteBuffer = value - 0xE0;
+                        Log.i("BLE MSG", "First byte received: " + byteBuffer);
+                    } else {
+                        int result = byteBuffer << 4;
+                        result += value - 0xE0;
+
+                        if (appId.size() < 3) {
+                            Log.i("BLE MSG", "Second byte received: " + (value - 0xE0) + ", final result: " + result + ", writing to app id");
+                            appId.add(result);
+                        } else {
+                            Log.i("BLE MSG", "Second byte received: " + (value - 0xE0) + ", final result: " + result + ", writing to received bytes array");
+                            bytesReceived.add(result);
+                        }
+                    }
+
+                    firstByteReceiving = !firstByteReceiving;
+                }
+            } else {
+                if (value == 0xDE){
+                    Log.i("BLE MSG", "Received BipTask protocol start byte");
+
+                    messageType = null;
+                    isMessageReceiving = true;
+                    firstByteReceiving = true;
+                    bytesReceived.clear();
+                    appId.clear();
+                } else {
+                    if (value == 0x04){
+                        buttonPressCount++;
+                        Log.i("BLE MSG", "Back button pressed " + buttonPressCount + " times");
+
+                        buttonHandler.removeCallbacks(handleButtonMessageSend);
+                        buttonHandler.postDelayed(handleButtonMessageSend, 700);
+                    } else {
+                        Log.i("BLE MSG", "Received single byte: " + value);
+
+                        Intent intent = new Intent(DEVICE_EVENT_HANDLE);
+                        intent.putExtra("type", BIPTASK_MESSAGE_BASIC);
+                        intent.putExtra("value", value.toString());
+                        sendBroadcast(intent);
+
+                        Bundle taskerBundle = new Bundle();
+                        taskerBundle.putString(Intents.EXTRA_MESSAGE_TYPE, BIPTASK_MESSAGE_BASIC);
+                        taskerBundle.putString(Intents.EXTRA_MESSAGE_DATA, value.toString());
+
+                        Intent taskerIntent = new Intent(Intents.ACTION_REQUEST_QUERY).putExtra(Intents.EXTRA_ACTIVITY, TaskerEventActivity.class.getName());
+                        int taskerMessageID = TaskerPlugin.Event.addPassThroughMessageID(taskerIntent);
+                        TaskerPlugin.Event.addPassThroughData(taskerIntent, taskerBundle);
+                        sendBroadcast(taskerIntent);
+                    }
+                }
+            }
         }
     };
 
@@ -184,6 +291,27 @@ public class AmazfitService extends Service {
             startForeground(1169, notification);
         }
     }
+
+    private Runnable handleButtonMessageSend = new Runnable() {
+        @Override
+        public void run() {
+            Intent intent = new Intent(DEVICE_EVENT_HANDLE);
+            intent.putExtra("type", BIPTASK_MESSAGE_BUTTON);
+            intent.putExtra("value", buttonPressCount.toString());
+            sendBroadcast(intent);
+
+            Bundle taskerBundle = new Bundle();
+            taskerBundle.putString(Intents.EXTRA_MESSAGE_TYPE, BIPTASK_MESSAGE_BUTTON);
+            taskerBundle.putString(Intents.EXTRA_MESSAGE_DATA, buttonPressCount.toString());
+
+            Intent taskerIntent = new Intent(Intents.ACTION_REQUEST_QUERY).putExtra(Intents.EXTRA_ACTIVITY, TaskerEventActivity.class.getName());
+            int taskerMessageID = TaskerPlugin.Event.addPassThroughMessageID(taskerIntent);
+            TaskerPlugin.Event.addPassThroughData(taskerIntent, taskerBundle);
+            sendBroadcast(taskerIntent);
+
+            buttonPressCount = 0;
+        }
+    };
 
     @Override
     public IBinder onBind(Intent intent) {

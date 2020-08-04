@@ -31,11 +31,8 @@ import com.yuukari.biptask.R;
 public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_LOCATION = 0x01;
 
-    private static final long SCAN_PERIOD = 5000;
-
     private BluetoothAdapter bluetoothAdapter;
     private Handler handler;
-    private boolean isScanning;
 
     private BroadcastReceiver broadcastReceiver;
 
@@ -62,37 +59,6 @@ public class MainActivity extends AppCompatActivity {
         } else {
             requestPermissions();
         }
-
-        MobileAds.initialize(this, new OnInitializationCompleteListener() {
-            @Override
-            public void onInitializationComplete(InitializationStatus initializationStatus) {
-            }
-        });
-
-        //AdView adView = findViewById(R.id.AdView);
-        //AdRequest adRequest = new AdRequest.Builder().build();
-        //adView.loadAd(adRequest);
-
-        /*
-        broadcastReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                String action = intent.getAction();
-
-                switch (action){
-                    case AmazfitService.DEVICE_EVENT_HANDLE:
-                        String value = intent.getStringExtra("value");
-
-                        Log.i("BLE RCVR", "Device event handle with result: " + value);
-                        break;
-                }
-            }
-        };
-
-        registerReceiver(broadcastReceiver, new IntentFilter(AmazfitService.DEVICE_EVENT_HANDLE));
-         */
-
-        //startService(new Intent(this, AmazfitService.class));
     }
 
     private void requestPermissions(){
@@ -110,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
         switch (requestCode) {
             case REQUEST_LOCATION:
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    if (preferences.contains(Preferences.DEVICE_ADDRESS))
+                    if (preferences.contains(Preferences.DEVICE_ADDRESS) && !isServiceRunning(AmazfitService.class))
                         startService(new Intent(this, AmazfitService.class));
                 } else {
                     Toast.makeText(this, "Похоже, что вы запретили приложению получать геолокацию. Без этого разрешения работа приложения невозможна.", Toast.LENGTH_SHORT).show();
@@ -137,40 +103,12 @@ public class MainActivity extends AppCompatActivity {
                 .putString(Preferences.DEVICE_ADDRESS, deviceAddress)
                 .apply();
 
+        if (!isServiceRunning(AmazfitService.class))
+            stopService(new Intent(this, AmazfitService.class));
+
         startService(new Intent(this, AmazfitService.class));
         startActivity(new Intent(this, LoggerActivity.class));
         finish();
-
-        /*
-        Log.i("Akirahome","Trying send tasker intent");
-
-        Bundle taskerBundle = new Bundle();
-        taskerBundle.putString(Intents.EXTRA_MESSAGE_DATA, "-15");
-
-        Intent activityIntent = new Intent(Intents.ACTION_REQUEST_QUERY).putExtra(Intents.EXTRA_ACTIVITY, TaskerEventActivity.class.getName());
-
-        int taskerMessageID = TaskerPlugin.Event.addPassThroughMessageID(activityIntent);
-        TaskerPlugin.Event.addPassThroughData(activityIntent, taskerBundle);
-
-        Log.i("Akirahome", String.valueOf(taskerMessageID));
-
-        sendBroadcast(activityIntent);
-        */
-
-        /*
-        Spinner spinnerDevices = findViewById(R.id.SpinnerDevices);
-
-        String item = spinnerDevices.getSelectedItem().toString();
-        String deviceAddress = item.split("\\[")[1].split("\\]")[0];
-
-        for (BluetoothDevice device : bluetoothDeviceList)
-            if (device.getAddress().equals(deviceAddress)){
-                Toast.makeText(this,"Connecting to " + deviceAddress, Toast.LENGTH_LONG).show();
-                device.createBond();
-                device.connectGatt(this, true, onGattCallback);
-                break;
-            }
-      */
     }
 
     private boolean isServiceRunning(Class<?> serviceClass) {
